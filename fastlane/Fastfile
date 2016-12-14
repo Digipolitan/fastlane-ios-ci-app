@@ -1,0 +1,150 @@
+lane :ci_app_begin do |options|
+  if ENV['CI'] == nil
+    UI.user_error! "Only a CI environment can run this lane"
+  end
+end
+
+lane :ci_app_tests do |options|
+  if ENV['CI'] == nil
+    UI.user_error! "Only a CI environment can run this lane"
+  end
+  prepare_lane_options(
+    options: options,
+    mapping: {
+      :workspace => {:env_var => "DG_WORKSPACE"},
+      :project => {:env_var => "DG_PROJECT"},
+      :scheme => {:env_var => "DG_SCHEME"}
+    }
+  )
+  if files_matching(pattern: "Podfile") != nil
+    cocoapods()
+  end
+  scan(
+    workspace: options[:workspace],
+    project: options[:project],
+    scheme: options[:scheme],
+    slack_only_on_failure: (git_branch() == "develop"),
+    clean: true
+  )
+end
+
+private_lane :ci_app_merge_appfile do |options|
+  prepare_lane_options(
+    options: options,
+    mapping: {
+      :app_identifier => {:env_var => "APP_IDENTIFIER"},
+      :team_name => {:env_var => "DEV_PORTAL_TEAM_NAME"},
+      :itc_team_name => {:env_var => "ITC_TEAM_NAME"}
+    }
+  )
+  if options[:app_identifier] == nil
+    options[:app_identifier] = CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier)
+  end
+  if options[:team_name] == nil
+    options[:team_name] = CredentialsManager::AppfileConfig.try_fetch_value(:team_name)
+  end
+  if options[:itc_team_name] == nil
+    options[:itc_team_name] = CredentialsManager::AppfileConfig.try_fetch_value(:itc_team_name)
+  end
+end
+
+lane :ci_app_beta do |options|
+  if ENV['CI'] == nil
+    UI.user_error! "Only a CI environment can run this lane"
+  end
+  ci_app_merge_appfile(options)
+  prepare_lane_options(
+    options: options,
+    mapping: {
+      :username => {:env_var => "ITC_USER"},
+      :project => {:env_var => "DG_PROJECT"},
+      :workspace => {:env_var => "DG_WORKSPACE"},
+      :scheme => {:env_var => "DG_SCHEME"},
+      :distribute_external => {:env_var => "DISTRIBUTE_EXTERNAL"},
+      :heroku_app_name => {:env_var => "HEROKU_APP_NAME"}
+    },
+    required_keys: [
+      :username,
+      :app_identifier
+    ]
+  )
+  scan(
+    workspace: options[:workspace],
+    project: options[:project],
+    scheme: options[:scheme]
+  )
+  match(
+    username: options[:username],
+    app_identifier: options[:app_identifier],
+    team_name: options[:team_name]
+  )
+  gym(
+    workspace: options[:workspace],
+    project: options[:project],
+    scheme: options[:scheme],
+    use_legacy_build_api: true
+  )
+  distribute_external = false
+  if options[:distribute_external] != nil && options[:distribute_external] == "true"
+    distribute_external = true
+  end
+  pilot(
+    distribute_external: distribute_external,
+    beta_app_description: "New feature available try it",
+    beta_app_feedback_email: "contact@digipolitan.com",
+    username: options[:username],
+    app_identifier: options[:app_identifier],
+    team_name: options[:itc_team_name] != nil ? options[:itc_team_name] : options[:team_name],
+    changelog: "New build with fastlane"
+  )
+  if distribute_external == true && options[:heroku_app_name] != nil
+    ci_app_boarding(options)
+  end
+end
+
+private_lane :ci_app_boarding do |options|
+  prepare_lane_options(
+    options: options,
+    mapping: {
+      :heroku_login_email => {:env_var => "HEROKU_LOGIN_EMAIL"},
+      :heroku_login_password => {:env_var => "HEROKU_LOGIN_PASSWORD"}
+    },
+    required_keys: [
+      :username,
+      :heroku_login_email,
+      :heroku_login_password,
+      :heroku_app_name,
+      :app_identifier
+    ]
+  )
+  heroku_login(
+    email: options[:heroku_login_email],
+    password: options[:heroku_login_password],
+  )
+  app_name = options[:heroku_app_name]
+  heroku_app_create(
+    name: app_name
+  )
+
+  o = [('a'..'z'), ('A'..'Z')].map { |i| i.to_a }.flatten
+  token = (0...20).map { o[rand(o.length)] }.join
+
+  data = CredentialsManager::AccountManager.new(user: options[:username])
+  password = data.password(ask_if_missing: false).to_s
+
+  env_vars = {
+    "ITC_APP_ID" => options[:app_identifier],
+    "ITC_PASSWORD" => password,
+    "ITC_TOKEN" => token,
+    "ITC_USER" => options[:username],
+  }
+  if options[:itc_team_name] != nil || options[:team_name] != nil
+    env_vars["FASTLANE_ITC_TEAM_NAME"] = options[:itc_team_name] != nil ? options[:itc_team_name] : options[:team_name]
+  end
+
+  heroku_app_deploy(
+    name: app_name,
+    source_git_url: "https://github.com/fastlane/boarding",
+    env_vars: env_vars
+  )
+end
