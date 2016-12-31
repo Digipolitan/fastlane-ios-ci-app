@@ -5,14 +5,9 @@ fastlane documentation
 sudo gem install fastlane
 ```
 # Available Actions
-### ci_app_begin
+### ci_app_starting
 ```
-fastlane ci_app_begin
-```
-
-### ci_app_tests
-```
-fastlane ci_app_tests
+fastlane ci_app_starting
 ```
 
 ### ci_app_beta
