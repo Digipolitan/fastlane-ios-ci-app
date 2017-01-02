@@ -1,28 +1,3 @@
-lane :ci_app_starting do |options|
-  if ENV['CI'] == nil
-    UI.user_error! "Only a CI environment can run this lane"
-  end
-  prepare_lane_options(
-    options: options,
-    mapping: {
-      :project => {:env_var => "DG_PROJECT"},
-      :product_name => {:env_var => "DG_PRODUCT_NAME"},
-    }
-  )
-  notification_payload = {}
-  if options[:product_name] != nil
-    notification_payload["Application"] = options[:product_name]
-  end
-  notification_payload["Platform"] = "iOS"
-  notification_payload["Version"] = get_version_number(xcodeproj: options[:project])
-  notification_payload["Git Branch"] = git_branch()
-  slack(
-    message: "Starting App CI",
-    payload: notification_payload,
-    default_payloads: [:git_author]
-  )
-end
-
 lane :ci_app_beta do |options|
   if ENV['CI'] == nil
     UI.user_error! "Only a CI environment can run this lane"
@@ -60,13 +35,18 @@ lane :ci_app_beta do |options|
     use_legacy_build_api: true
   )
 
+  notification_payload = {}
+  project_info = get_project_info(xcodeproj: options[:xcodeproj])
+  notification_payload["Application"] = project_info[:name],
+  notification_payload["Platform"] = "iOS",
+  notification_payload["Version"] = get_version_number(xcodeproj: options[:xcodeproj]),
+  notification_payload["Git Branch"] = git_branch()
   pilot_info = get_pilot_info()
   if pilot_info["skip"] != true
     distribute_external = options[:distribute_external]
     if distribute_external == "false"
       distribute_external = false
     end
-
     pilot(
       distribute_external: distribute_external,
       beta_app_description: pilot_info["beta_app_description"],
@@ -76,10 +56,17 @@ lane :ci_app_beta do |options|
       team_name: options[:itc_team_name] != nil ? options[:itc_team_name] : options[:team_name],
       changelog: pilot_info["changelog"]
     )
+    notification_payload["TestFlight"] = "Ready"
     if distribute_external == true && options[:heroku_app_name] != nil
       ci_app_boarding(options)
+      notification_payload["Boarding"] = Actions.lane_context[:BOARDING_URL]
     end
   end
+  slack(
+    message: "Successfully distributed application CI",
+    payload: notification_payload,
+    default_payloads: [:git_author]
+  )
 end
 
 private_lane :ci_app_boarding do |options|
