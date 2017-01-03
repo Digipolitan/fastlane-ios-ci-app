@@ -13,8 +13,7 @@ lane :ci_app_beta do |options|
       Actions::BindParamBuilder.new(:apple_id).env_var("APPLE_ID").lane_context(SharedValues::APPFILE_APPLE_ID).required().build(),
       Actions::BindParamBuilder.new(:app_identifier).env_var("APP_IDENTIFIER").lane_context(SharedValues::APPFILE_APP_IDENTIFIER).required().build(),
       Actions::BindParamBuilder.new(:team_name).env_var("TEAM_NAME").lane_context(SharedValues::APPFILE_TEAM_NAME).build(),
-      Actions::BindParamBuilder.new(:itc_team_name).env_var("ITC_TEAM_NAME").lane_context(SharedValues::APPFILE_ITC_TEAM_NAME).build(),
-      Actions::BindParamBuilder.new(:heroku_app_name).env_var("HEROKU_APP_NAME").build()
+      Actions::BindParamBuilder.new(:itc_team_name).env_var("ITC_TEAM_NAME").lane_context(SharedValues::APPFILE_ITC_TEAM_NAME).build()
     ]
   )
   match(
@@ -28,17 +27,11 @@ lane :ci_app_beta do |options|
     project: options[:xcodeproj],
     scheme: options[:target_scheme]
   )
-  notification_payload = {}
-  project_info = get_project_info(xcodeproj: options[:xcodeproj])
-  notification_payload["Application"] = project_info[:name],
-  notification_payload["Platform"] = "iOS",
-  notification_payload["Version"] = get_version_number(xcodeproj: options[:xcodeproj]),
-  notification_payload["Git Branch"] = git_branch()
   pilot_info = get_pilot_info()
+  test_flight_info = nil
   if pilot_info["skip"] != true
-    distribute_external = options[:distribute_external]
     pilot(
-      distribute_external: distribute_external,
+      distribute_external: options[:distribute_external],
       beta_app_description: pilot_info["beta_app_description"],
       beta_app_feedback_email: pilot_info["beta_app_feedback_email"],
       username: options[:apple_id],
@@ -46,61 +39,90 @@ lane :ci_app_beta do |options|
       team_name: options[:itc_team_name] != nil ? options[:itc_team_name] : options[:team_name],
       changelog: pilot_info["changelog"]
     )
-    notification_payload["TestFlight"] = "Ready"
-    if distribute_external == true && options[:heroku_app_name] != nil
-      ci_app_boarding(options)
-      notification_payload["Boarding"] = Actions.lane_context[:BOARDING_URL]
-    end
+    test_flight_info = "Ready"
+  else
+    test_flight_info = "Skip"
   end
+  project_info = get_project_info(xcodeproj: options[:xcodeproj])
   slack(
     message: "Successfully distributed application CI",
-    payload: notification_payload,
+    payload: {
+      "Application" => project_info[:name],
+      "Platform" => "iOS",
+      "Version" => get_version_number(xcodeproj: project_info[:xcodeproj]),
+      "Git Branch" => git_branch(),
+      "TestFlight" => test_flight_info
+    },
     default_payloads: [:git_author]
   )
 end
 
-private_lane :ci_app_boarding do |options|
+lane :ci_app_boarding do |options|
   prepare_lane_options(
     options: options,
     bind_params: [
-      Actions::BindParamBuilder.new(:heroku_login_email).env_var("HEROKU_LOGIN_EMAIL").required().build(),
-      Actions::BindParamBuilder.new(:heroku_login_password).env_var("HEROKU_LOGIN_PASSWORD").required().build(),
-      Actions::BindParamBuilder.new(:heroku_app_name).required.build(),
-      Actions::BindParamBuilder.new(:apple_id).required().build(),
-      Actions::BindParamBuilder.new(:app_identifier).required().build(),
+      Actions::BindParamBuilder.new(:distribute_external).env_var("DISTRIBUTE_EXTERNAL").transform(Actions::BindParamTransform::Boolean).default_value(true).build(),
+      Actions::BindParamBuilder.new(:heroku_app_name).build()
     ]
   )
-  heroku_login(
-    email: options[:heroku_login_email],
-    password: options[:heroku_login_password],
-  )
-  app_name = options[:heroku_app_name]
-  heroku_app_create(
-    name: app_name
-  )
+  if options[:distribute_external] == true && options[:heroku_app_name] != nil
+    pilot_info = get_pilot_info()
+    if pilot_info["skip"] != true
+      prepare_lane_options(
+        options: options,
+        bind_params: [
+          Actions::BindParamBuilder.new(:xcodeproj).env_var("XCODEPROJ").build(),
+          Actions::BindParamBuilder.new(:heroku_login_email).env_var("HEROKU_LOGIN_EMAIL").required().build(),
+          Actions::BindParamBuilder.new(:heroku_login_password).env_var("HEROKU_LOGIN_PASSWORD").required().build(),
+          Actions::BindParamBuilder.new(:heroku_app_name).required.build(),
+          Actions::BindParamBuilder.new(:apple_id).required().build(),
+          Actions::BindParamBuilder.new(:app_identifier).required().build(),
+        ]
+      )
+      heroku_login(
+        email: options[:heroku_login_email],
+        password: options[:heroku_login_password],
+      )
+      app_name = options[:heroku_app_name]
+      heroku_app_create(
+        name: app_name
+      )
 
-  o = [('a'..'z'), ('A'..'Z')].map { |i| i.to_a }.flatten
-  token = (0...20).map { o[rand(o.length)] }.join
+      o = [('a'..'z'), ('A'..'Z')].map { |i| i.to_a }.flatten
+      token = (0...20).map { o[rand(o.length)] }.join
 
-  data = CredentialsManager::AccountManager.new(user: options[:apple_id])
-  password = data.password(ask_if_missing: false).to_s
+      data = CredentialsManager::AccountManager.new(user: options[:apple_id])
+      password = data.password(ask_if_missing: false).to_s
 
-  env_vars = {
-    "ITC_APP_ID" => options[:app_identifier],
-    "ITC_PASSWORD" => password,
-    "ITC_TOKEN" => token,
-    "ITC_USER" => options[:apple_id],
-  }
-  if options[:itc_team_name] != nil || options[:team_name] != nil
-    env_vars["FASTLANE_ITC_TEAM_NAME"] = options[:itc_team_name] != nil ? options[:itc_team_name] : options[:team_name]
-  end
+      env_vars = {
+        "ITC_APP_ID" => options[:app_identifier],
+        "ITC_PASSWORD" => password,
+        "ITC_TOKEN" => token,
+        "ITC_USER" => options[:apple_id],
+      }
+      if options[:itc_team_name] != nil || options[:team_name] != nil
+        env_vars["FASTLANE_ITC_TEAM_NAME"] = options[:itc_team_name] != nil ? options[:itc_team_name] : options[:team_name]
+      end
 
-  heroku_app_deploy(
-    name: app_name,
-    source_git_url: "https://github.com/fastlane/boarding",
-    env_vars: env_vars
-  )
-  if heroku_app_url = lane_context[SharedValues::HEROKU_APP_URL]
-    lane_context[:BOARDING_URL] = "#{heroku_app_url}?token=#{token}"
+      heroku_app_deploy(
+        name: app_name,
+        source_git_url: "https://github.com/fastlane/boarding",
+        env_vars: env_vars
+      )
+
+      project_info = get_project_info(xcodeproj: options[:xcodeproj])
+      heroku_app_url = lane_context[SharedValues::HEROKU_APP_URL]
+      slack(
+        message: "Successfully boarding application CI",
+        payload: {
+          "Application" => project_info[:name],
+          "Platform" => "iOS",
+          "Version" => get_version_number(xcodeproj: project_info[:xcodeproj]),
+          "Git Branch" => git_branch(),
+          "Boarding URL" => "#{heroku_app_url}?token=#{token}"
+        },
+        default_payloads: [:git_author]
+      )
+    end
   end
 end

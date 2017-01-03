@@ -10,6 +10,11 @@ sudo gem install fastlane
 fastlane ci_app_beta
 ```
 
+### ci_app_boarding
+```
+fastlane ci_app_boarding
+```
+
 
 ----
 
