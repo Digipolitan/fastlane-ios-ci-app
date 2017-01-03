@@ -9,7 +9,7 @@ lane :ci_app_beta do |options|
       Actions::BindParamBuilder.new(:xcworkspace).env_var("XCWORKSPACE").build(),
       Actions::BindParamBuilder.new(:xcodeproj).env_var("XCODEPROJ").build(),
       Actions::BindParamBuilder.new(:target_scheme).env_var("TARGET_SCHEME").ci_required().build(),
-      Actions::BindParamBuilder.new(:distribute_external).env_var("DISTRIBUTE_EXTERNAL").transform(BindParamTransform::Boolean).default_value(true).build(),
+      Actions::BindParamBuilder.new(:distribute_external).env_var("DISTRIBUTE_EXTERNAL").transform(Actions::BindParamTransform::Boolean).default_value(true).build(),
       Actions::BindParamBuilder.new(:apple_id).env_var("APPLE_ID").lane_context(SharedValues::APPFILE_APPLE_ID).required().build(),
       Actions::BindParamBuilder.new(:app_identifier).env_var("APP_IDENTIFIER").lane_context(SharedValues::APPFILE_APP_IDENTIFIER).required().build(),
       Actions::BindParamBuilder.new(:team_name).env_var("TEAM_NAME").lane_context(SharedValues::APPFILE_TEAM_NAME).build(),
