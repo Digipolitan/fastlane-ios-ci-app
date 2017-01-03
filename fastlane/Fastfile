@@ -26,10 +26,8 @@ lane :ci_app_beta do |options|
   gym(
     workspace: options[:xcworkspace],
     project: options[:xcodeproj],
-    scheme: options[:target_scheme],
-    use_legacy_build_api: true
+    scheme: options[:target_scheme]
   )
-
   notification_payload = {}
   project_info = get_project_info(xcodeproj: options[:xcodeproj])
   notification_payload["Application"] = project_info[:name],
