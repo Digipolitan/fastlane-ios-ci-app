@@ -45,7 +45,7 @@ lane :ci_app_beta do |options|
   end
   project_info = get_project_info(xcodeproj: options[:xcodeproj])
   slack(
-    message: "Successfully distributed application CI",
+    message: "Successfully deploy application beta CI",
     payload: {
       "Application" => project_info[:name],
       "Platform" => "iOS",
@@ -62,7 +62,7 @@ lane :ci_app_boarding do |options|
     options: options,
     bind_params: [
       Actions::BindParamBuilder.new(:distribute_external).env_var("DISTRIBUTE_EXTERNAL").transform(Actions::BindParamTransform::Boolean).default_value(true).build(),
-      Actions::BindParamBuilder.new(:heroku_app_name).build()
+      Actions::BindParamBuilder.new(:heroku_app_name).env_var("HEROKU_APP_NAME").build()
     ]
   )
   if options[:distribute_external] == true && options[:heroku_app_name] != nil
@@ -84,9 +84,7 @@ lane :ci_app_boarding do |options|
         password: options[:heroku_login_password],
       )
       app_name = options[:heroku_app_name]
-      heroku_app_create(
-        name: app_name
-      )
+      heroku_app_create(name: app_name)
 
       o = [('a'..'z'), ('A'..'Z')].map { |i| i.to_a }.flatten
       token = (0...20).map { o[rand(o.length)] }.join
