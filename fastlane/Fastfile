@@ -68,15 +68,18 @@ lane :ci_app_boarding do |options|
   if options[:distribute_external] == true && options[:heroku_app_name] != nil
     pilot_info = get_pilot_info()
     if pilot_info["skip"] != true
+      appfile_fetch()
       prepare_lane_options(
         options: options,
         bind_params: [
           Actions::BindParamBuilder.new(:xcodeproj).env_var("XCODEPROJ").build(),
           Actions::BindParamBuilder.new(:heroku_login_email).env_var("HEROKU_LOGIN_EMAIL").required().build(),
           Actions::BindParamBuilder.new(:heroku_login_password).env_var("HEROKU_LOGIN_PASSWORD").required().build(),
-          Actions::BindParamBuilder.new(:heroku_app_name).required.build(),
-          Actions::BindParamBuilder.new(:apple_id).required().build(),
-          Actions::BindParamBuilder.new(:app_identifier).required().build(),
+          Actions::BindParamBuilder.new(:heroku_app_name).required().build(),
+          Actions::BindParamBuilder.new(:apple_id).env_var("APPLE_ID").lane_context(SharedValues::APPFILE_APPLE_ID).required().build(),
+          Actions::BindParamBuilder.new(:app_identifier).env_var("APP_IDENTIFIER").lane_context(SharedValues::APPFILE_APP_IDENTIFIER).required().build(),
+          Actions::BindParamBuilder.new(:team_name).env_var("TEAM_NAME").lane_context(SharedValues::APPFILE_TEAM_NAME).build(),
+          Actions::BindParamBuilder.new(:itc_team_name).env_var("ITC_TEAM_NAME").lane_context(SharedValues::APPFILE_ITC_TEAM_NAME).build()
         ]
       )
       heroku_login(
