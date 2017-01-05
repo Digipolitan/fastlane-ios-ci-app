@@ -50,7 +50,7 @@ lane :ci_app_beta do |options|
       "Application" => project_info[:name],
       "Platform" => "iOS",
       "Version" => get_version_number(xcodeproj: project_info[:xcodeproj]),
-      "Build" => get_build_number(xcodeproj: project_info[:xcodeproj])
+      "Build" => get_build_number(xcodeproj: project_info[:xcodeproj]),
       "Git Branch" => git_branch(),
       "TestFlight" => test_flight_info
     },
