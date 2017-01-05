@@ -50,8 +50,7 @@ lane :ci_app_beta do |options|
       "Application" => project_info[:name],
       "Platform" => "iOS",
       "Version" => get_version_number(xcodeproj: project_info[:xcodeproj]),
-      "Build" => get_build_number(xcodeproj: project_info[:xcodeproj]),
-      "Git Branch" => git_branch(),
+      "Build" => get_build_number(xcodeproj: project_info[:xcodeproj])
       "TestFlight" => test_flight_info
     },
     default_payloads: [:git_author]
@@ -121,7 +120,6 @@ lane :ci_app_boarding do |options|
           "Platform" => "iOS",
           "Version" => get_version_number(xcodeproj: project_info[:xcodeproj]),
           "Build" => get_build_number(xcodeproj: project_info[:xcodeproj]),
-          "Git Branch" => git_branch(),
           "Boarding URL" => "#{heroku_app_url}?token=#{token}"
         },
         default_payloads: [:git_author]
